@@ -1,0 +1,88 @@
+#!/usr/bin/python3
+"""Root-owned, narrowly-scoped pkexec helper. Reads domains on stdin; no path args."""
+import fcntl
+import json
+import os
+from pathlib import Path
+import pwd
+import re
+import stat
+import sys
+import tempfile
+
+DOMAIN = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.test\Z")
+
+
+def update(text, uid, domains):
+    start, end = f"# BEGIN LOCALFORGE UID {uid}", f"# END LOCALFORGE UID {uid}"
+    lines = text.splitlines()
+    if lines.count(start) != lines.count(end) or lines.count(start) > 1:
+        raise ValueError("Malformed LocalForge block; fix /etc/hosts manually")
+    if start in lines:
+        a, b = lines.index(start), lines.index(end)
+        if a >= b:
+            raise ValueError("Malformed LocalForge block")
+        lines[a:b + 1] = []
+    for line in lines:
+        tokens = line.split("#", 1)[0].split()
+        if set(tokens[1:]) & set(domains):
+            raise ValueError("A requested domain already exists outside your managed block")
+    if domains:
+        lines += [start, *[f"127.0.0.1\t{d}" for d in sorted(set(domains))], end]
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def main():
+    if len(sys.argv) != 1 or os.geteuid() != 0:
+        raise ValueError("This helper must be invoked through pkexec without arguments")
+    uid = int(os.environ.get("PKEXEC_UID", "0"))
+    if uid < 1000 or not pwd.getpwuid(uid).pw_dir.startswith("/"):
+        raise ValueError("A regular desktop user must authorize this request")
+    payload = sys.stdin.read(65537)
+    if len(payload) > 65536:
+        raise ValueError("Request too large")
+    obj = json.loads(payload)
+    domains = obj.get("domains")
+    if not isinstance(domains, list) or len(domains) > 500 or not all(isinstance(d, str) and DOMAIN.fullmatch(d) for d in domains):
+        raise ValueError("Only up to 500 lowercase single-label .test names are permitted")
+    target = Path("/etc/hosts")
+    with open("/run/lock/localforge-hosts.lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        st = target.lstat()
+        if not stat.S_ISREG(st.st_mode) or st.st_uid != 0:
+            raise ValueError("/etc/hosts must be a regular root-owned file, not a symlink")
+        original = target.read_text()
+        if len(original) > 1024 * 1024:
+            raise ValueError("Hosts file unexpectedly large")
+        content = update(original, uid, domains)
+        fd, tmp = tempfile.mkstemp(prefix=".localforge-hosts-", dir="/etc")
+        try:
+            with os.fdopen(fd, "w") as stream:
+                stream.write(content)
+                stream.flush()
+                os.fsync(stream.fileno())
+                os.fchown(stream.fileno(), st.st_uid, st.st_gid)
+                os.fchmod(stream.fileno(), stat.S_IMODE(st.st_mode))
+            # Preserve SELinux labels and other xattrs on Fedora.
+            for key in os.listxattr(target):
+                os.setxattr(tmp, key, os.getxattr(target, key))
+            if target.stat().st_ino != st.st_ino or target.read_text() != original:
+                raise ValueError("/etc/hosts changed during update; retry")
+            os.replace(tmp, target)
+            directory = os.open("/etc", os.O_DIRECTORY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+    print(f"Updated your LocalForge block: {len(set(domains))} domain(s). No other entries removed.")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(f"LocalForge hosts update refused: {exc}", file=sys.stderr)
+        sys.exit(1)

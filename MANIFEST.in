@@ -1,0 +1,7 @@
+include LICENSE README.md install-arch.sh install-fedora.sh
+recursive-include packaging *
+recursive-include scripts *.sh *.py
+recursive-include tests *.py
+recursive-include docs *.md *.txt *.png
+
+recursive-include localforge/assets *.php *.txt *.md

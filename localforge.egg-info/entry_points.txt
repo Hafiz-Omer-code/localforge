@@ -1,0 +1,3 @@
+[console_scripts]
+localforge = localforge.cli:main
+localforge-gui = localforge.gui:main

@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: localforge
+Version: 0.1.2
+Summary: User-owned Linux web development environments
+License: MIT
+Requires-Python: >=3.10
+License-File: LICENSE
+Requires-Dist: PySide6<7,>=6.6
+Dynamic: license-file
