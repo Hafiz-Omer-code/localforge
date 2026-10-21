@@ -149,6 +149,16 @@ QT_QPA_PLATFORM=offscreen python scripts/gui-smoke.py
 
 Headless backend and tests use only the standard library; importing the engine never requires Qt.
 
+## Why LocalForge instead of Laragon on Linux?
+
+Laragon is widely loved on Windows for its zero-config workflow, automatic virtual hosts, and native speed. However, Laragon is strictly Windows-only. Linux developers are often forced into heavy Docker setups (DDEV, Sail) or dated XAMPP packages.
+
+LocalForge brings the authentic Laragon experience to Linux:
+- **No Docker Overhead:** Runs lightweight native distro binaries directly under your user account.
+- **Identical Workflow:** Drop a folder into `~/www/` and immediately get a clean `.test` domain.
+- **Multi-PHP Support:** Switch global versions or set per-project `.php-version` files.
+- **Integrated Database Tool:** Bundled web database management via Adminer.
+
 ## Third-party notice
 
 Bundled Adminer 6.1.2 is redistributed unchanged under Apache License 2.0, separate from LocalForge’s MIT license. The source package and wheel include its [provenance notice](localforge/assets/ADMINER-NOTICE.md) and full license.
